@@ -1,5 +1,158 @@
 ---
 title: "Tidy Data"
 output: github_document
+editor_options: 
+  markdown: 
+    wrap: 72
 ---
---- test
+
+Rules for Tidy Data: 
+
+* Columns are variables 
+* Rows are observations 
+* Every value has a cell
+
+Relational Data:
+
+* Data spread across tables with defined relations 
+* Variables used to define these relations are KEYS 
+* Tables are combined by JOINS
+
+```{r setup, message=FALSE}
+library(tidyverse)
+```
+
+### Function `pivot_longer`
+
+Load the PULSE data
+
+```{r}
+pulse_data =
+    haven::read_sas("C:/Users/Twilight/Desktop/Columbia/Fall Semester 2024/Data Science I/Datasets/public_pulse_data.sas7bdat") %>%
+    janitor::clean_names()
+
+# Standardizes Column Names:
+#   Converts all column names to lowercase.
+#   Replaces spaces, special characters, and other problematic symbols with underscores (_).
+#   Removes accents from letters (if any).
+#   Ensures that column names begin with a letter and are syntactically valid R names.
+# Results in Consistent and Tidy Names:
+#   Helps avoid issues with inconsistent column names, which can be particularly useful when working with data from external sources like Excel files or databases.
+#   Works well for making column names easier to work with programmatically (e.g., when selecting columns or using functions in dplyr or ggplot2).
+
+```
+
+### Wide format to long format ...
+
+```{r}
+pulse_data_tidy = pulse_data %>%
+    pivot_longer(
+      bdi_score_bl:bdi_score_12m,
+      names_to = "visit",
+        names_prefix = "bdi_score_",
+      values_to = "bdi"
+    )
+
+# Prepare to convert conlumns bdi_score_bl:bdi_score_12m
+# Put names into newly created "visit" column, and put values into newly created "bdi" column
+  # In column "visit", only keep original column names after the names_prefix "bdi_score_"
+
+```
+
+### Rewrite, combine, and extend(to add a mutate)
+
+```{r}
+pulse_data = 
+    haven::read_sas("C:/Users/Twilight/Desktop/Columbia/Fall Semester 2024/Data Science I/Datasets/public_pulse_data.sas7bdat") %>%
+    janitor::clean_names() %>%
+    pivot_longer(
+        bdi_score_bl:bdi_score_12m,
+        names_to = "visit",
+          names_prefix = "bdi_score_",
+        values_to = "bdi"
+    ) %>%
+    relocate(id, visit) %>%  # id与visit互换位置
+    mutate(visit = recode(visit, "bl"="00m"))  # visit中的"bl"换成"00m"
+```
+
+### Function `pivot_wider`
+
+```{r}
+analysis_result = 
+    tibble(
+      group = c("treatment", "treatment", "placebo", "placebo"),
+      time  = c("pre", "post", "pre", "post"),
+      mean  = c(4, 8, 3.5, 4)
+    )
+
+analysis_result2 = 
+  analysis_result %>%
+    pivot_wider(
+        names_from  = "time",
+        values_from = "mean"
+    )
+        
+analysis_result
+analysis_result2
+
+# extract names from "time" to become the new columns
+# extract values from "mean" to become the new cell contents
+
+```
+
+### Binding rows
+
+First step: import each table.
+```{r}
+fellowship_ring = 
+  readxl::read_excel("C:/Users/Twilight/Desktop/Columbia/Fall Semester 2024/Data Science I/Datasets/LotR_Words.xlsx", range = "B3:D6") |>
+  mutate(movie = "fellowship_ring")
+
+two_towers = 
+  readxl::read_excel("C:/Users/Twilight/Desktop/Columbia/Fall Semester 2024/Data Science I/Datasets/LotR_Words.xlsx", range = "F3:H6") |>
+  mutate(movie = "two_towers")
+
+return_king = 
+  readxl::read_excel("C:/Users/Twilight/Desktop/Columbia/Fall Semester 2024/Data Science I/Datasets/LotR_Words.xlsx", range = "J3:L6") |>
+  mutate(movie = "return_king")
+
+```
+
+Bind all the rows together
+```{r}
+lotr_tidy = 
+    bind_rows(fellowship_ring, two_towers, return_king) %>%
+    janitor::clean_names() %>%
+    relocate(movie) %>%  # 把movie列放在第一列
+    pivot_longer(
+        female:male,
+        names_to = "gender",
+        values_to = "words"
+    )
+```
+
+### Joining Tables
+
+Import and Clean the FAS datasets.
+```{r}
+pups_df =
+    read.csv("C:/Users/Twilight/Desktop/Columbia/Fall Semester 2024/Data Science I/Datasets/FAS_pups.csv") %>%
+    janitor::clean_names() %>%
+    mutate(sex=recode(sex, `1`="male", `2`="female"))
+
+litters_df =
+    read_csv("C:/Users/Twilight/Desktop/Columbia/Fall Semester 2024/Data Science I/Datasets/FAS_litters.csv") %>%
+    janitor::clean_names() %>%
+    relocate(litter_number) %>%
+    separate(group, into=c("dose", "day_of_tx"), sep=3) 
+  #原本group列内容为Con7,现在在第三字节处切割，第一部分(Con)给到"dose"列，第二部分(7)给到"day_of_tx"列
+```
+
+Next up, time to join them!
+```{r}
+fas_df =
+    left_join(pups_df, litters_df, by="litter_number") %>%
+    arrange(litter_number) %>%   # 将litter_number列升序排列，若有N/A项优先
+    relocate(litter_number, dose, day_of_tx) # 将litter_number, dose, day_of_tx放在1，2，3列
+```
+
